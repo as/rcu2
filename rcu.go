@@ -17,15 +17,23 @@ func New() *Store {
 	return c
 }
 
-func (c *Store) Get(path, file string) (Value, bool) {
-	x, ok := c.Dir.Get(path)
+// Get returns the path's key value. Ok is false if it
+// does not exist.
+func (s *Store) Get(path, key string) (v Value, ok bool) {
+	x, ok := s.Dir.Get(path)
 	if !ok {
-		return x, ok
+		return x, false
 	}
-	return x.(*Dir).Get(file)
+	return x.(*Dir).Get(key)
 }
-func (c *Store) Put(path, key string, val Value) bool {
-	dmap := c.loaddir().loadFile()
+
+// Put associates the value with the path's key. It returns
+// false if a concurrent modification prevented the call from
+// completing the Put.
+//
+// TODO(as): Algorithm complexity
+func (s *Store) Put(path, key string, val Value) bool {
+	dmap := s.loaddir().loadFile()
 
 	sbox, _ := dmap.Get(path).(*Dir)
 	if sbox == nil {
@@ -33,20 +41,28 @@ func (c *Store) Put(path, key string, val Value) bool {
 		sbox.storeFile(&File{Map: map[string]int{}})
 		smap := sbox.loadFile()
 		sbox.Swap(smap, key, val)
-		return c.Dir.Swap(dmap, path, sbox)
+		return s.Dir.Swap(dmap, path, sbox)
 	}
 
 	smap := sbox.loadFile()
 	return sbox.Swap(smap, key, val)
 }
 
-func (c *Store) Del(path, key string) (Value, bool) {
-	d, ok := c.loaddir().Get(path)
+// Del deletes the path's key value. It returns true if the
+// value does not exist after the call completed (this could
+// mean the value never existed). 
+//
+// It returns false if and only if a concurrent modification 
+// prevented the operation from ascertaining that the key
+// no longer exists.
+func (s *Store) Del(path, key string) (Value, bool) {
+	d, ok := s.loaddir().Get(path)
 	if !ok {
-		return nil, ok
+		return nil, true
 	}
 	return d.(*Dir).Del(key)
 }
+
 func (c *Store) loaddir() *Dir {
 	tmp := unsafe.Pointer(&c.Dir)
 	return (*Dir)(atomic.LoadPointer(&tmp))
