@@ -50,9 +50,9 @@ func (s *Store) Put(path, key string, val Value) bool {
 
 // Del deletes the path's key value. It returns true if the
 // value does not exist after the call completed (this could
-// mean the value never existed). 
+// mean the value never existed).
 //
-// It returns false if and only if a concurrent modification 
+// It returns false if and only if a concurrent modification
 // prevented the operation from ascertaining that the key
 // no longer exists.
 func (s *Store) Del(path, key string) (Value, bool) {
