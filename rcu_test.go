@@ -3,8 +3,10 @@ package rcu2
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"reflect"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -37,32 +39,109 @@ var testboxd = [...]Box{
 	{Second: Second{ID: "d3"}, First: "d"},
 }
 
-func hammer(c *Store, stop <-chan bool) {
-	for i := 0; ; i++ {
-		if i == len(testbox) {
-			i = 0
-			select {
-			case <-stop:
-				return
-			default:
+func TestKeys(t *testing.T) {
+	c := New()
+	slist := []string{}
+	flist := []string{}
+	for i := range testbox {
+		v := testbox[i]
+		flist = append(flist, v.First)
+		slist = append(slist, v.Second.ID)
+		c.Put(v.First, v.Second.ID, &v)
+	}
+	keys := c.Keys()
+	for i, have := range keys {
+		want := flist[0]
+		if have != want {
+			t.Fatalf("first: %d: bad name: have %q, want %q", i, have, want)
+		}
+		sub := c.Keys(have)
+		flist = flist[len(sub):]
+		for j, have := range sub {
+			want := slist[0]
+			slist = slist[1:]
+			if have != want {
+				t.Fatalf("second: %d,%d: bad name: have %q, want %q", i, j, have, want)
 			}
 		}
-		v := &testbox[i]
-		c.Put(v.First, v.Second.ID, v)
 	}
 }
-func hammer2(c *Store, stop <-chan bool) {
+
+func hammer0(c *Store, stop <-chan bool, fn func(int)) {
 	for i := 0; ; i++ {
 		if i == len(testbox) {
 			i = 0
-			select {
-			case <-stop:
-				return
-			default:
-			}
 		}
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		fn(i)
+		time.Sleep(time.Duration(rand.Int63n(int64(time.Second))))
+	}
+}
+func hammer(c *Store, stop <-chan bool) {
+	hammer0(c, stop, func(i int) {
+		v := &testbox[i]
+		c.Put(v.First, v.Second.ID, v)
+	})
+}
+func hammer2(c *Store, stop <-chan bool) {
+	hammer0(c, stop, func(i int) {
 		v := &testbox[i]
 		c.Del(v.First, v.Second.ID)
+	})
+}
+func hammer3(c *Store, stop <-chan bool) {
+	hammer0(c, stop, func(i int) {
+		c.Get(fmt.Sprint(i), fmt.Sprint(i))
+	})
+}
+
+func TestStoreRandom(t *testing.T) {
+	c := New()
+	done := make(chan bool)
+	defer close(done)
+	go hammer(c, done)
+	go hammer(c, done)
+	go hammer2(c, done)
+	go hammer2(c, done)
+	go hammer3(c, done)
+	go hammer3(c, done)
+	go hammer3(c, done)
+	rand.Seed(time.Now().UnixNano())
+
+	for i := 0; i < 5000; i++ {
+		k0, k1 := fmt.Sprint(i, "f", "	", rand.Int()), fmt.Sprint("s", i, "	", rand.Int())
+		v := Box{}
+		v.First = k0
+		v.Second.ID = k1
+		const (
+			max = 100
+		)
+		retry := 0
+		for !c.Put(k0, k1, &v) && retry != max {
+			retry++
+		}
+		if retry == max {
+			t.Fatalf("put: failed to put %q, %q after %d attempts", k0, k1, retry)
+		}
+		if retry != 0 {
+			t.Logf("put: contention: %q, %q (%d attempts) ", k0, k1, retry)
+		}
+		v0 := c.Get(k0, k1)
+		if v0 == nil {
+			t.Log("get", k0, k1, errNotExist)
+			for _, nm := range c.Dir.Keys() {
+				t.Log(nm)
+			}
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(v0.(*Box), &v) {
+			t.Fatalf("get: %q, %q: not deeply equal:\n\thave %#v\n\twant%#v", k0, k1, v0, v)
+			break
+		}
 	}
 }
 
@@ -81,8 +160,8 @@ func TestStoreConcurrent(t *testing.T) {
 			// don't fail the test, this behavior is fine
 			t.Log("put", i, errConcurrentWrite)
 		}
-		v0, ok := c.Get(key0, key1)
-		if !ok {
+		v0 := c.Get(key0, key1)
+		if v0 == nil {
 			t.Fatal("get", i, errNotExist)
 		}
 		if !reflect.DeepEqual(v0.(*Box), &v) {
@@ -104,8 +183,7 @@ func BenchmarkGet(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			for i := range testbox {
 				v := &testbox[i]
-				_, ok := c.Get(v.First, v.Second.ID)
-				if !ok {
+				if v0 := c.Get(v.First, v.Second.ID); v0 == nil {
 					b.Fatal("get", i, errNotExist)
 				}
 			}
@@ -126,8 +204,7 @@ func BenchmarkGet(b *testing.B) {
 					for pb.Next() {
 						for i := range testbox {
 							v := &testbox[i]
-							_, ok := c.Get(v.First, v.Second.ID)
-							if !ok {
+							if v0 := c.Get(v.First, v.Second.ID); v0 == nil {
 								b.Fatal("get", i, errNotExist)
 							}
 						}
@@ -159,8 +236,7 @@ func BenchmarkGet(b *testing.B) {
 					for pb.Next() {
 						for i := range testbox {
 							v := &testbox[i]
-							_, ok := c.Get(v.First, v.Second.ID)
-							if !ok {
+							if v0 := c.Get(v.First, v.Second.ID); v0 == nil {
 								b.Fatal("get", i, errNotExist)
 							}
 						}
@@ -190,8 +266,7 @@ func BenchmarkGet(b *testing.B) {
 					for pb.Next() {
 						for i := range testboxd {
 							v := &testboxd[i]
-							_, ok := c.Get(v.First, v.Second.ID)
-							if !ok {
+							if v0 := c.Get(v.First, v.Second.ID); v0 == nil {
 								b.Fatal("get", i, errNotExist)
 							}
 						}
