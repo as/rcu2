@@ -39,6 +39,41 @@ var testboxd = [...]Box{
 	{Second: Second{ID: "d3"}, First: "d"},
 }
 
+func TestNoZero(t *testing.T) {
+	c := New()
+	done := make(chan bool)
+	defer close(done)
+	set := func(a,b string, v interface{}){
+		for{
+		for i := 0; i < 1024; i++{
+			c.Put("a", "b", v)
+		}
+			select{
+			default:
+			case <-done:
+				return
+			}
+		}
+	}
+	c.Put("a", "b", 1)
+	c.Put("a", "b", 2)
+	go set("a", "b", 1)
+	go set("a", "b", 2)
+	for i := 0; i < 1000000; i++{
+		v := c.Get("a", "b")
+		if v == nil{
+			t.Fatalf("%d: got nil value", i)
+		}
+		n, ok := v.(int)
+		if !ok{
+			t.Fatalf("%d: non-int value: %T", i,n)
+		}
+		if n != 1 && n != 2{
+			t.Fatalf("%d: out of range: %v", i,n)
+		}
+	}
+}
+
 func TestKeys(t *testing.T) {
 	c := New()
 	slist := []string{}
