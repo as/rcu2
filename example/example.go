@@ -27,15 +27,26 @@ func main() {
 		s.Put(v.Zone, v.Service.ID, &conf[i])
 	}
 
+	fmt.Println("#")
+	fmt.Println("# Keys are known in advance (query)")
 	for _, z := range []string{"alpha", "bravo", "charlie"} {
 		for _, id := range s.Keys(z) {
-			v, _ := s.Get(z, id).(*Config)
-			if v == nil {
-				fmt.Println("ERR", z, id, "not found")
-				continue
+			if v, _ := s.Get(z, id).(*Config); v != nil{
+				fmt.Println(id, v.Name)
 			}
-			fmt.Println(z, id, v.Name)
 		}
 	}
+	fmt.Println("")
+
+	fmt.Println("#")
+	fmt.Println("# Keys are not known (range)")
+	for _, z := range s.Keys() {
+		for _, id := range s.Keys(z) {
+			if v, _ := s.Get(z, id).(*Config); v != nil{
+				fmt.Println(id, v.Name)
+			}
+		}
+	}
+	fmt.Println("")
 
 }
