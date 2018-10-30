@@ -43,12 +43,12 @@ func TestNoZero(t *testing.T) {
 	c := New()
 	done := make(chan bool)
 	defer close(done)
-	set := func(a,b string, v interface{}){
-		for{
-		for i := 0; i < 1024; i++{
-			c.Put("a", "b", v)
-		}
-			select{
+	set := func(a, b string, v interface{}) {
+		for {
+			for i := 0; i < 1024; i++ {
+				c.Put("a", "b", v)
+			}
+			select {
 			default:
 			case <-done:
 				return
@@ -59,17 +59,17 @@ func TestNoZero(t *testing.T) {
 	c.Put("a", "b", 2)
 	go set("a", "b", 1)
 	go set("a", "b", 2)
-	for i := 0; i < 1000000; i++{
+	for i := 0; i < 1000000; i++ {
 		v := c.Get("a", "b")
-		if v == nil{
+		if v == nil {
 			t.Fatalf("%d: got nil value", i)
 		}
 		n, ok := v.(int)
-		if !ok{
-			t.Fatalf("%d: non-int value: %T", i,n)
+		if !ok {
+			t.Fatalf("%d: non-int value: %T", i, n)
 		}
-		if n != 1 && n != 2{
-			t.Fatalf("%d: out of range: %v", i,n)
+		if n != 1 && n != 2 {
+			t.Fatalf("%d: out of range: %v", i, n)
 		}
 	}
 }
