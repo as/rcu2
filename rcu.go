@@ -18,8 +18,11 @@ func New() *Store {
 	return c
 }
 
-func (s *Store) Names() []string {
-	return nil
+// Keys returns the names of the keys which exist under
+// the given list of paths. If len(path)==0, the list of keys
+// for all existing paths is returned
+func (s *Store) Keys(path ...string) []string {
+	return s.Dir.Keys(path...)
 }
 
 // Get returns the path's key value. Ok is false if it
